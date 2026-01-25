@@ -49,6 +49,7 @@ namespace rviz_common
 class QueueSizeProperty;
 namespace properties
 {
+class BoolProperty;
 class ColorProperty;
 class FloatProperty;
 class IntProperty;
@@ -94,9 +95,13 @@ private:
   geometry_msgs::msg::Pose getPose(float displayed_range);
 
   std::vector<std::shared_ptr<rviz_rendering::Shape>> cones_;
+  std::vector<std::shared_ptr<rviz_rendering::Shape>> variance_cones_;
 
+  rviz_common::properties::BoolProperty * show_variance_property_;
   rviz_common::properties::ColorProperty * color_property_;
+  rviz_common::properties::ColorProperty * variance_color_property_;
   rviz_common::properties::FloatProperty * alpha_property_;
+  rviz_common::properties::FloatProperty * variance_alpha_property_;
   rviz_common::properties::IntProperty * buffer_length_property_;
 };
 

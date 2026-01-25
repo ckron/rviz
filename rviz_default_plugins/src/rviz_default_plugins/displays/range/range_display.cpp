@@ -55,14 +55,29 @@ RangeDisplay::RangeDisplay(rviz_common::DisplayContext * display_context)
 
 RangeDisplay::RangeDisplay()
 {
+  show_variance_property_ = new rviz_common::properties::BoolProperty(
+    "Show Variance", false,
+    "Display the variance range as an outer cone.",
+    this, SLOT(updateColorAndAlpha()));
+
   color_property_ = new rviz_common::properties::ColorProperty(
     "Color", Qt::white,
     "Color to draw the range.",
     this, SLOT(updateColorAndAlpha()));
 
+  variance_color_property_ = new rviz_common::properties::ColorProperty(
+    "Variance Color", Qt::yellow,
+    "Color to draw the variance range.",
+    this, SLOT(updateColorAndAlpha()));
+
   alpha_property_ = new rviz_common::properties::FloatProperty(
     "Alpha", 0.5f,
     "Amount of transparency to apply to the range.",
+    this, SLOT(updateColorAndAlpha()));
+
+  variance_alpha_property_ = new rviz_common::properties::FloatProperty(
+    "Variance Alpha", 0.1f,
+    "Amount of transparency to apply to the variance range.",
     this, SLOT(updateColorAndAlpha()));
 
   buffer_length_property_ = new rviz_common::properties::IntProperty(
@@ -91,8 +106,14 @@ void RangeDisplay::updateColorAndAlpha()
 {
   auto color = color_property_->getOgreColor();
   float alpha = alpha_property_->getFloat();
+  auto variance_color = variance_color_property_->getOgreColor();
+  float variance_alpha = variance_alpha_property_->getFloat();
   for (const auto & cone : cones_) {
     cone->setColor(color.r, color.g, color.b, alpha);
+  }
+  for (const auto & cone : variance_cones_) {
+    cone->setColor(variance_color.r, variance_color.g, variance_color.b,
+                    variance_alpha);
   }
   context_->queueRender();
 }
@@ -101,7 +122,9 @@ void RangeDisplay::updateBufferLength()
 {
   int buffer_length = buffer_length_property_->getInt();
   auto color = color_property_->getOgreColor();
+  auto variance_color = variance_color_property_->getOgreColor();
   cones_.resize(buffer_length);
+  variance_cones_.resize(buffer_length);
 
   for (auto & cone : cones_) {
     cone.reset(
@@ -111,11 +134,20 @@ void RangeDisplay::updateBufferLength()
     cone->setScale(Ogre::Vector3(0, 0, 0));
     cone->setColor(color.r, color.g, color.b, 0);
   }
+  for (auto & cone : variance_cones_) {
+    cone.reset(
+      new rviz_rendering::Shape(
+        rviz_rendering::Shape::Cone, context_->getSceneManager(), scene_node_));
+
+    cone->setScale(Ogre::Vector3(0, 0, 0));
+    cone->setColor(variance_color.r, variance_color.g, variance_color.b, 0);
+  }
 }
 
 void RangeDisplay::processMessage(const sensor_msgs::msg::Range::ConstSharedPtr msg)
 {
   auto cone = cones_[messages_received_ % buffer_length_property_->getInt()];
+  auto variance_cone = variance_cones_[messages_received_ % buffer_length_property_->getInt()];
 
   Ogre::Vector3 position;
   Ogre::Quaternion orientation;
@@ -140,6 +172,26 @@ void RangeDisplay::processMessage(const sensor_msgs::msg::Range::ConstSharedPtr 
 
   auto color = color_property_->getOgreColor();
   cone->setColor(color.r, color.g, color.b, alpha_property_->getFloat());
+
+  auto variance_color = variance_color_property_->getOgreColor();
+
+  if (msg->variance > 0.0f && show_variance_property_->getBool()) {
+    variance_cone->setPosition(position);
+    variance_cone->setOrientation(orientation);
+
+    float std_dev = std::sqrt(msg->variance);
+    float variance_range = displayed_range + std_dev;
+
+    float variance_cone_width = 2.0f * variance_range * tan(msg->field_of_view / 2.0f);
+    Ogre::Vector3 variance_scale(variance_cone_width, displayed_range, variance_cone_width);
+    variance_cone->setScale(variance_scale);
+
+    variance_cone->setColor(variance_color.r, variance_color.g, variance_color.b,
+                              variance_alpha_property_->getFloat());
+  } else {
+    variance_cone->setScale(Ogre::Vector3(0, 0, 0));
+    variance_cone->setColor(variance_color.r, variance_color.g, variance_color.b, 0);
+  }
 }
 
 float RangeDisplay::getDisplayedRange(sensor_msgs::msg::Range::ConstSharedPtr msg)
